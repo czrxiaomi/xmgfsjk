@@ -1,0 +1,663 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<meta name="theme-color" content="#ffffff">
+<title>素材库 · Liquid Glass</title>
+<style>
+/* ============ iOS 26 Liquid Glass — 折射式光学材质 ============
+   Liquid Glass 本质：折射模拟（非磨砂）。
+   物理层：背景穿过玻璃层时被弯曲/缩放/位移（SVG feDisplacementMap）。
+   光学层：菲涅尔边缘亮边 + 顶部高光渐变 + 玻璃厚度感（内高光）。
+   行为层：浓度/亮度随状态实时调整（:hover/:active 动态适应）。 */
+
+:root{
+  --ink:#1d1d1f; --ink2:#3a3a3c; --sub:#6e6e73; --line:#d2d2d7;
+  --brand:#007aff; --ok:#34c759; --bad:#ff3b30;
+  --r-card:18px; --r-pill:999px; --r-btn:999px;
+  --ease:cubic-bezier(.2,.8,.2,1);
+}
+
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  font:15px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",system-ui,sans-serif;
+  color:var(--ink); background:#ffffff;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  overflow:hidden;
+  display:flex; flex-direction:column;
+}
+
+/* 极淡环境色块：让玻璃在白底上有可折射的色彩 */
+.ambient{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.ambient i{position:absolute;border-radius:50%;filter:blur(60px);opacity:.10;will-change:transform}
+.ambient i:nth-child(1){width:420px;height:420px;left:-120px;top:-100px;background:#007aff}
+.ambient i:nth-child(2){width:360px;height:360px;right:-100px;top:30%;background:#af52de}
+.ambient i:nth-child(3){width:380px;height:380px;left:20%;bottom:-120px;background:#34c759}
+
+/* ================= Liquid Glass 核心 ================= */
+.glass, .glass-soft{
+  position:relative; isolation:isolate;
+  background:rgba(255,255,255,.28);
+  backdrop-filter:saturate(200%) blur(18px) brightness(1.08);
+  -webkit-backdrop-filter:saturate(200%) blur(18px) brightness(1.08);
+  border-radius:var(--r-card);
+  border:1px solid rgba(255,255,255,.85);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.95),
+    inset 0 -1px 0 rgba(0,0,0,.05),
+    0 1px 2px rgba(0,0,0,.05),
+    0 8px 30px rgba(0,0,0,.06);
+  transition:box-shadow .35s var(--ease), background .35s var(--ease), transform .35s var(--ease);
+}
+.glass-soft{background:rgba(255,255,255,.55)}
+.glass::before, .glass-soft::before{
+  content:""; position:absolute; inset:0; border-radius:inherit; z-index:-1;
+  background:inherit; filter:url(#refractSoft); opacity:.55; pointer-events:none;
+}
+.glass::after, .glass-soft::after{
+  content:""; position:absolute; top:0; left:0; right:0; height:1px; border-radius:inherit;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.9),transparent); pointer-events:none;
+}
+.glass:active, .glass-soft:active{
+  background:rgba(255,255,255,.82);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,1), inset 0 -1px 0 rgba(0,0,0,.05), 0 2px 6px rgba(0,0,0,.06);
+  transform:scale(.985);
+}
+
+/* 顶部导航条（液态玻璃胶囊）—— 文档流内元素，天然位于内容上方，杜绝与卡片重叠 */
+.nav{
+  position:relative; z-index:50;
+  display:flex; align-items:center; gap:10px;
+  margin:max(12px,env(safe-area-inset-top)) 12px 0;
+  padding:8px 10px; border-radius:var(--r-pill);
+  background:rgba(255,255,255,.6);
+  backdrop-filter:saturate(160%) brightness(1.08);
+  -webkit-backdrop-filter:saturate(160%) brightness(1.08);
+  border:1px solid rgba(255,255,255,.7);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.9), 0 4px 18px rgba(0,0,0,.05);
+}
+.brand{flex:0 0 auto;font-weight:700;font-size:17px;letter-spacing:-.01em;padding:0 6px;color:var(--ink);
+  background:linear-gradient(135deg,#007aff,#af52de);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+
+/* 搜索栏：纯净，仅搜索栏本身 */
+.search{position:relative;flex:1;min-width:0;display:flex;align-items:center}
+.search svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--sub);pointer-events:none}
+.search input{
+  width:100%; height:36px; padding:0 14px 0 36px; border:0; outline:0;
+  font:inherit; color:var(--ink); background:rgba(242,242,247,.8); border-radius:var(--r-pill);
+  transition:background .25s var(--ease), box-shadow .25s var(--ease);
+}
+.search input::placeholder{color:var(--sub)}
+.search input:focus{background:#fff; box-shadow:0 0 0 2px var(--brand) inset}
+
+/* ============ 分段控制器（椭圆/胶囊 + 透明滑块 + 可拖动） ============ */
+.seg{position:fixed; left:12px; right:12px; bottom:max(14px,env(safe-area-inset-bottom));
+  z-index:60; display:flex; align-items:center; justify-content:center}
+.seg-inner{position:relative; display:flex; align-items:center; gap:0;
+  padding:5px; border-radius:var(--r-pill);
+  background:rgba(242,242,247,.7);
+  backdrop-filter:saturate(160%) brightness(1.06);
+  -webkit-backdrop-filter:saturate(160%) brightness(1.06);
+  border:1px solid rgba(255,255,255,.7);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.9), 0 6px 22px rgba(0,0,0,.07);
+  user-select:none; -webkit-user-select:none;
+}
+.seg-btn{flex:1; min-width:96px; height:40px; display:flex; align-items:center; justify-content:center; gap:6px;
+  font-size:14px; font-weight:600; color:var(--ink2); background:transparent; border:0; cursor:pointer;
+  padding:0 18px; border-radius:var(--r-pill); position:relative; z-index:2;
+  transition:color .35s var(--ease); white-space:nowrap}
+.seg-btn .lb{font-size:15px;line-height:1}
+.seg-btn.active{color:var(--ink)}
+/* 透明 liquid glass 滑块 —— 可拖动 */
+.seg-pill{position:absolute; top:5px; left:5px; height:40px; border-radius:var(--r-pill); z-index:3;
+  background:rgba(255,255,255,.22);
+  backdrop-filter:saturate(200%) blur(10px) brightness(1.14);
+  -webkit-backdrop-filter:saturate(200%) blur(10px) brightness(1.14);
+  border:1px solid rgba(255,255,255,.8);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.95),
+    inset 0 -1px 0 rgba(0,0,0,.05),
+    0 2px 10px rgba(0,0,0,.07);
+  transition:left .45s var(--ease), width .45s var(--ease), opacity .35s var(--ease);
+  pointer-events:auto; cursor:grab; touch-action:none; -webkit-user-select:none; user-select:none}
+.seg-pill:active,.seg-pill.dragging{cursor:grabbing; background:rgba(255,255,255,.30); transition:none;}
+.seg-pill::after{content:"";position:absolute;inset:0;border-radius:inherit;
+  background:linear-gradient(180deg,rgba(255,255,255,.3),rgba(255,255,255,0));pointer-events:none}
+.badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;
+  padding:0 5px;border-radius:9px;background:var(--bad);color:#fff;font-size:11px;font-weight:700;line-height:1}
+
+/* ============ 页面容器：正常文档流 + flex，结构上位于导航下方 ============
+   导航/搜索栏已在文档流顶部 → 内容天然在其下方，从布局上杜绝重叠
+   顶部额外留 14px 呼吸间距，底部留 130px 给 fixed 分段控制器 */
+.pages{position:relative;z-index:1;flex:1;min-height:0;padding:14px 0 130px;overflow:hidden}
+.page{position:absolute;inset:0;overflow:auto;-webkit-overflow-scrolling:touch;
+  padding:14px 14px 32px; opacity:0; transform:translateY(8px); pointer-events:none;
+  transition:opacity .4s var(--ease), transform .4s var(--ease); scroll-padding-top:14px}
+.page.active{opacity:1;transform:none;pointer-events:auto}
+
+/* 各页首个玻璃卡片/容器额外顶部间距，确保不与搜索栏视觉重叠
+   覆盖开发者动态挂载的 .dev-card（密码输入卡 / 添加素材卡） */
+.page > .glass:first-child,
+.page > .glass-soft:first-child,
+.page > .empty:first-child,
+.page > .cart-bar:first-child,
+.page > .banner:first-child,
+.page > .dev-box:first-child > .glass:first-child,
+.page > .dev-box:first-child > .glass-soft:first-child,
+.page > .dev-box:first-child > .dev-card:first-child,
+.page > .dev-card:first-child{margin-top:6px}
+
+/* Today 网格 */
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+@media(min-width:640px){.grid{grid-template-columns:repeat(3,1fr)}}
+@media(min-width:960px){.grid{grid-template-columns:repeat(4,1fr)}}
+.card{display:flex;flex-direction:column;overflow:hidden}
+.card .thumb{position:relative;width:100%;aspect-ratio:1/1;background:#f2f2f7;overflow:hidden;border-radius:var(--r-card) var(--r-card) 0 0}
+.card .thumb img,.card .thumb video{width:100%;height:100%;object-fit:cover;display:block;transition:transform .5s var(--ease)}
+.card:active .thumb img,.card:active .thumb video{transform:scale(1.04)}
+.card .thumb video{background:#000}
+.card .badge-type{position:absolute;top:8px;right:8px;display:inline-flex;align-items:center;gap:3px;
+  padding:3px 8px;border-radius:20px;background:rgba(20,20,20,.72);color:#fff;font-size:10px;font-weight:700;
+  box-shadow:0 2px 6px rgba(0,0,0,.18)}
+.cart-item .ci.video,.added-item img.video{object-fit:cover}
+.card .badge-free{position:absolute;top:8px;left:8px;display:inline-flex;align-items:center;gap:3px;
+  padding:3px 8px;border-radius:20px;background:rgba(255,255,255,.92);color:var(--ok);font-size:10px;font-weight:700;
+  box-shadow:0 2px 6px rgba(0,0,0,.1)}
+.card .body{padding:10px 12px 12px;display:flex;flex-direction:column;gap:4px;flex:1}
+.card .t{font-size:13px;font-weight:700;color:var(--ink);line-height:1.3;-webkit-line-clamp:1;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden}
+.card .d{font-size:11px;color:var(--sub);line-height:1.35;-webkit-line-clamp:2;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden;min-height:30px}
+.card .row{display:flex;gap:8px;margin-top:8px}
+.btn{flex:1;height:34px;display:inline-flex;align-items:center;justify-content:center;gap:5px;
+  font-size:12px;font-weight:600;color:var(--ink);background:rgba(242,242,247,.9);border:0;cursor:pointer;
+  border-radius:var(--r-btn); transition:all .25s var(--ease)}
+.btn:hover{background:#eaeaef}
+.btn:active{transform:scale(.96)}
+.btn.primary{color:#fff;background:var(--brand);box-shadow:0 2px 8px rgba(0,122,255,.28)}
+.btn.primary:hover{background:#0066d6}
+.btn.added{color:#fff;background:var(--ok);box-shadow:0 2px 8px rgba(52,199,89,.28)}
+.btn.danger{color:#fff;background:var(--bad);box-shadow:0 2px 8px rgba(255,59,48,.25)}
+
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+  padding:60px 20px;text-align:center;color:var(--sub)}
+.empty .ic{width:56px;height:56px;border-radius:16px;display:flex;align-items:center;justify-content:center;
+  background:rgba(242,242,247,.8);font-size:26px}
+.empty b{color:var(--ink2);font-weight:600;font-size:15px}
+
+/* 购物车 */
+.cart-list{display:flex;flex-direction:column;gap:10px}
+.cart-item{display:flex;gap:12px;padding:10px;align-items:center}
+.ck{width:22px;height:22px;border-radius:7px;flex:0 0 22px;border:1.5px solid var(--line);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;background:#fff;
+  transition:all .25s var(--ease)}
+.ck.on{border-color:var(--brand);background:var(--brand);box-shadow:0 2px 6px rgba(0,122,255,.25)}
+.ck.on svg{color:#fff}
+.cart-item .ci{width:64px;height:64px;border-radius:12px;object-fit:cover;flex:0 0 64px;background:#f2f2f7}
+.cart-item .ct{flex:1;min-width:0}
+.cart-item .ct .t{font-size:13px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cart-item .ct .d{font-size:11px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cart-item .del{width:34px;height:34px;border-radius:10px;border:0;background:rgba(242,242,247,.8);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--bad);font-size:16px}
+.cart-bar{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;
+  gap:10px;padding:8px 4px;margin-bottom:6px}
+.cart-bar .fill{flex:1}
+.toolbar{display:flex;gap:8px;align-items:center}
+
+/* 开发者 */
+.dev-box{display:flex;flex-direction:column;gap:12px}
+.dev-card{padding:16px}
+.dev-card h3{font-size:15px;font-weight:700;margin-bottom:4px}
+.dev-card p{font-size:12px;color:var(--sub);margin-bottom:12px;line-height:1.5}
+.field{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}
+.field label{font-size:12px;font-weight:600;color:var(--ink2)}
+.field input[type=password],.field input[type=text],.field textarea,.field input[type=file]{
+  width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:12px;font:inherit;color:var(--ink);
+  background:#fafafc;outline:0;transition:border-color .2s,box-shadow .2s}
+.field input:focus,.field textarea:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(0,122,255,.15)}
+.field textarea{resize:vertical;min-height:60px}
+.hint{font-size:11px;color:var(--sub)}
+.hint.err{color:var(--bad);font-weight:600}
+.dev-actions{display:flex;gap:8px;flex-wrap:wrap}
+.preview{width:100%;max-height:180px;object-fit:cover;border-radius:12px;margin-top:6px;display:none;border:1px solid var(--line)}
+.added-list{display:flex;flex-direction:column;gap:8px}
+.added-item{display:flex;gap:10px;padding:8px;align-items:center}
+.added-item img{width:48px;height:48px;border-radius:10px;object-fit:cover;flex:0 0 48px}
+.added-item .at{flex:1;min-width:0}
+.added-item .at .t{font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.added-item .at .d{font-size:11px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.locked-mask{display:flex;flex-direction:column;align-items:center;gap:12px;padding:30px 10px;text-align:center}
+
+/* Toast */
+.toast{position:fixed;left:50%;bottom:130px;transform:translate(-50%,20px);z-index:200;
+  padding:12px 18px;border-radius:14px;background:rgba(28,28,30,.92);color:#fff;font-size:13px;font-weight:500;
+  box-shadow:0 10px 30px rgba(0,0,0,.25);opacity:0;pointer-events:none;
+  transition:opacity .35s var(--ease), transform .35s var(--ease);max-width:86vw;text-align:center;line-height:1.4}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+/* 提示条 */
+.banner{display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border-radius:12px;
+  background:rgba(0,122,255,.06);border:1px solid rgba(0,122,255,.18);font-size:12px;color:#004a99;line-height:1.45}
+.banner.warn{background:rgba(255,59,48,.06);border-color:rgba(255,59,48,.2);color:#8a1c14}
+.banner.ok{background:rgba(52,199,89,.06);border-color:rgba(52,199,89,.2);color:#1a7a2e}
+
+/* 同步状态指示 */
+.sync-status{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--sub);margin-top:4px}
+.sync-dot{width:7px;height:7px;border-radius:50%;background:var(--line);display:inline-block}
+.sync-dot.ok{background:var(--ok);box-shadow:0 0 6px rgba(52,199,89,.5)}
+.sync-dot.err{background:var(--bad);box-shadow:0 0 6px rgba(255,59,48,.5)}
+</style>
+</head>
+<body>
+
+<!-- SVG 滤镜定义：折射位移贴图（物理层核心） -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <filter id="refract" x="-5%" y="-5%" width="110%" height="110%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="7" result="noise"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="3" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="refractSoft" x="-5%" y="-5%" width="110%" height="110%">
+      <feTurbulence type="fractalNoise" baseFrequency="1.2" numOctaves="1" seed="3" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="1.5" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+  </defs>
+</svg>
+
+<div class="ambient" aria-hidden="true"><i></i><i></i><i></i></div>
+
+<!-- 顶部导航 -->
+<header class="nav" role="banner">
+  <span class="brand">素材库</span>
+  <div class="search" role="search">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+    <input id="searchInput" type="search" placeholder="搜索素材" inputmode="search" autocomplete="off">
+  </div>
+</header>
+
+<!-- 分段控制器 -->
+<nav class="seg" aria-label="主导航">
+  <div class="seg-inner" id="segInner">
+    <span class="seg-pill" id="segPill" aria-hidden="true"></span>
+    <button class="seg-btn active" data-tab="today" aria-current="page"><span class="lb">Today</span></button>
+    <button class="seg-btn" data-tab="cart"><span class="lb">购物车</span><span class="badge" id="cartBadge" hidden>0</span></button>
+    <button class="seg-btn" data-tab="dev"><span class="lb">开发者</span></button>
+  </div>
+</nav>
+
+<!-- 页面 -->
+<main class="pages">
+  <section class="page active" id="page-today" aria-label="素材库">
+    <div class="grid" id="grid"></div>
+  </section>
+  <section class="page" id="page-cart" aria-label="购物车">
+    <div class="cart-bar glass-soft">
+      <span class="fill" id="cartCountTxt" style="font-size:13px;color:var(--sub)">购物车为空</span>
+      <div class="toolbar">
+        <button class="btn" id="selAllBtn" style="flex:0 0 auto;padding:0 14px">全选</button>
+        <button class="btn danger" id="clearCartBtn" style="flex:0 0 auto;padding:0 14px">清空</button>
+      </div>
+    </div>
+    <div class="cart-list" id="cartList"></div>
+  </section>
+  <section class="page" id="page-dev" aria-label="开发者">
+    <div id="devMount"></div>
+  </section>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+"use strict";
+/* ================= 配置 =================
+   部署前请将 owner/repo 改为你的 GitHub 用户名/仓库名。
+   仓库内需存在 data/items.json，初始内容：{"items":[]} */
+const CFG = {
+  owner:"YOUR_GITHUB_USER",
+  repo :"YOUR_REPO",
+  dataPath:"data/items.json",
+  branch:"main"
+};
+const DEV_KEY="ml_dev_unlock";
+const FAIL_KEY="ml_dev_fail";
+const DEV_PWD="201353440103201305037611";
+const TOKEN_KEY="ml_gh_token";
+
+let ITEMS=[];
+let CART=[];
+try{ CART=JSON.parse(localStorage.getItem("ml_cart")||"[]"); }catch(e){ CART=[]; }
+
+const $=(s)=>document.querySelector(s);
+const el=(tag,cls,html)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(html!=null)n.innerHTML=html;return n;};
+function toast(msg,ms=2800){const t=$("#toast");t.textContent=msg;t.classList.add("show");clearTimeout(toast._h);toast._h=setTimeout(()=>t.classList.remove("show"),ms);}
+function uid(){return "m_"+(Date.now().toString(36))+Math.random().toString(36).slice(2,6);}
+function cartHas(id){return CART.includes(id);}
+function updateCartBadge(){const b=$("#cartBadge");const n=CART.length;b.textContent=n;b.hidden=n===0;}
+function saveCart(){localStorage.setItem("ml_cart",JSON.stringify(CART));updateCartBadge();}
+
+/* ================= GitHub 仓库作为数据库 =================
+   访客：通过 raw.githubusercontent.com 免 token 拉取 data/items.json
+   开发者：通过 GitHub REST API 把新 items.json 写回仓库（= git commit）
+   → 所有访客刷新页面即可看到最新素材（真正的共享更新） */
+async function ghGet(path){return fetch("https://raw.githubusercontent.com/"+CFG.owner+"/"+CFG.repo+"/"+CFG.branch+"/"+path+"?t="+Date.now()).then(r=>r.ok?r.json():Promise.reject(r.status));}
+async function ghApi(path,opts){return fetch("https://api.github.com"+path,opts).then(r=>r.json().then(j=>({ok:r.ok,status:r.status,body:j})));}
+async function loadItems(){
+  try{ const data=await ghGet(CFG.dataPath); ITEMS=Array.isArray(data?.items)?data.items:[]; }
+  catch(e){ ITEMS=[]; }
+  // 字段归一化：旧数据用 img，统一为 src；缺 type 默认 image
+  ITEMS=ITEMS.map(it=>({type:"image",...(it.src?{}:{src:it.img}),...it,src:it.src||it.img}));
+  renderGrid(); renderCart();
+}
+function getToken(){return localStorage.getItem(TOKEN_KEY)||"";}
+function setToken(t){if(t)localStorage.setItem(TOKEN_KEY,t);else localStorage.removeItem(TOKEN_KEY);}
+async function commitItems(newItems){
+  const tok=getToken(); if(!tok) throw new Error("NO_TOKEN");
+  // 获取当前文件 sha（必须，GitHub API PUT 需要）
+  const info=await ghApi("/repos/"+CFG.owner+"/"+CFG.repo+"/contents/"+encodeURI(CFG.dataPath),{headers:{"Authorization":"Bearer "+tok}});
+  const sha=info.body?.sha; if(!sha) throw new Error("NO_FILE");
+  const content=btoa(unescape(encodeURIComponent(JSON.stringify({items:newItems},null,2))));
+  const res=await ghApi("/repos/"+CFG.owner+"/"+CFG.repo+"/contents/"+encodeURI(CFG.dataPath),{
+    method:"PUT",
+    headers:{"Authorization":"Bearer "+tok,"Content-Type":"application/json"},
+    body:JSON.stringify({message:"update material library items",content,sha,branch:CFG.branch})
+  });
+  if(!res.ok) throw new Error(res.body?.message||"COMMIT_FAILED");
+}
+
+/* ================= Today 网格渲染 ================= */
+function renderGrid(){
+  const grid=$("#grid"); grid.innerHTML="";
+  const q=($("#searchInput").value||"").trim().toLowerCase();
+  const list=q?ITEMS.filter(i=>(i.title||"").toLowerCase().includes(q)||(i.desc||"").toLowerCase().includes(q)):ITEMS;
+  if(list.length===0){
+    const empty=el("div","empty glass-soft",`<div class="ic">🖼️</div><b>${q?"无匹配素材":"暂无素材"}</b><span style="font-size:12px">${q?"换个关键词试试":"开发者可在「开发者」页添加素材"}</span>`);
+    empty.style.gridColumn="1 / -1"; grid.appendChild(empty); return;
+  }
+  list.forEach(it=>grid.appendChild(cardNode(it)));
+}
+function cardNode(it){
+  const card=el("div","card glass");
+  const isVideo=it.type==="video";
+  const media=isVideo
+    ?`<video src="${it.src}" muted loop playsinline preload="metadata" poster="" aria-label="${it.title||""}"></video>`
+    :`<img src="${it.src}" alt="${it.title||""}" loading="lazy">`;
+  card.innerHTML=`
+    <div class="thumb">
+      ${media}
+      <span class="badge-free">✓ 可商用·免费</span>
+      ${isVideo?`<span class="badge-type">▶ 视频</span>`:""}
+    </div>
+    <div class="body">
+      <div class="t">${it.title||"未命名素材"}</div>
+      <div class="d">${it.desc||""}</div>
+      <div class="row">
+        <button class="btn ${cartHas(it.id)?"added":"primary"}" data-act="add" data-id="${it.id}">
+          ${cartHas(it.id)?"✓ 已添加":"加入购物车"}
+        </button>
+      </div>
+    </div>`;
+  // 视频：进入视口后尝试播放（静音自动播），离开暂停，节省资源
+  if(isVideo){const v=card.querySelector("video");if(!v)return card;
+    v.addEventListener("mouseenter",()=>{try{v.play();}catch(e){}});
+    v.addEventListener("mouseleave",()=>{try{v.pause();}catch(e){}});}
+  return card;
+}
+
+/* ================= 购物车 ================= */
+function renderCart(){
+  const list=$("#cartList"); list.innerHTML="";
+  const items=ITEMS.filter(i=>CART.includes(i.id));
+  $("#cartCountTxt").textContent=items.length?`共 ${items.length} 项 · 已选 ${items.filter(i=>i.selected).length} 项`:"购物车为空";
+  if(items.length===0){list.appendChild(el("div","empty glass-soft",`<div class="ic">🛒</div><b>购物车为空</b><span style="font-size:12px">去 Today 添加喜欢的素材吧</span>`));return;}
+  items.forEach(it=>{
+    const node=el("div","cart-item glass-soft");
+    node.innerHTML=`
+      <span class="ck ${it.selected?"on":""}" data-act="toggle" data-id="${it.id}" role="checkbox" aria-checked="${!!it.selected}">
+        ${it.selected?'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>':""}
+      </span>
+      ${it.type==="video"?`<video class="ci video" src="${it.src}" muted playsinline preload="metadata"></video>`:`<img class="ci" src="${it.src}" alt="">`}
+      <div class="ct"><div class="t">${it.title||"未命名素材"}${it.type==="video"?' <span style="font-size:10px;color:var(--brand)">▶视频</span>':""}</div><div class="d">${it.desc||""}</div></div>
+      <button class="del" data-act="rm" data-id="${it.id}" aria-label="移除">🗑️</button>`;
+    list.appendChild(node);
+  });
+}
+function selectedItems(){return ITEMS.filter(i=>CART.includes(i.id)&&i.selected);}
+function downloadOne(it){const a=document.createElement("a");a.href=it.src;a.download=(it.title||"material")+(it.type==="video"?".mp4":".png");document.body.appendChild(a);a.click();a.remove();}
+function isIOS(){return /iPad|iPhone|iPod/.test(navigator.userAgent)&&!window.MSStream;}
+async function downloadSelected(){
+  const sel=selectedItems(); if(!sel.length){toast("请先选择要下载的素材");return;}
+  if(isIOS()){sel.forEach(it=>window.open(it.img,"_blank"));toast("已打开图片，请长按图片选择「存储图像」保存到相册");}
+  else{sel.forEach((it,i)=>setTimeout(()=>downloadOne(it),i*120));toast(`已开始下载 ${sel.length} 项到本地`);}
+}
+
+/* ================= 分段控制器 =================
+   点击按钮 → 滑块滑动到目标并切换页
+   按住滑块拖动 → 滑块随手指实时跟随，拖动到某按钮区域即实时切换该 tab，
+   松手后滑块吸附到当前激活按钮（弹性归位） */
+const SEG_TABS=["today","cart","dev"];
+function setTab(name){
+  document.querySelectorAll(".seg-btn").forEach(b=>{const a=b.dataset.tab===name;b.classList.toggle("active",a);b.setAttribute("aria-current",a?"page":"false");});
+  document.querySelectorAll(".page").forEach(p=>p.classList.toggle("active",p.id==="page-"+name));
+  const activeBtn=document.querySelector('.seg-btn[data-tab="'+name+'"]'); if(!activeBtn)return;
+  const inner=$("#segInner").getBoundingClientRect(), r=activeBtn.getBoundingClientRect();
+  const pill=$("#segPill");
+  pill.style.left=(r.left-inner.left)+"px"; pill.style.width=r.width+"px";
+  pill.dataset.tab=name;
+}
+function activeTab(){return (document.querySelector(".seg-btn.active")||{}).dataset?.tab||"today";}
+window.addEventListener("load",()=>setTab("today"));
+document.getElementById("segInner").addEventListener("click",e=>{const b=e.target.closest(".seg-btn");if(b)setTab(b.dataset.tab);});
+
+(function bindPillDrag(){
+  const pill=$("#segPill"), inner=$("#segInner");
+  let dragging=false, startX=0, baseLeft=0;
+
+  function rectOf(tab){
+    const b=document.querySelector('.seg-btn[data-tab="'+tab+'"]'); if(!b)return null;
+    const r=b.getBoundingClientRect(), ir=inner.getBoundingClientRect();
+    return {left:r.left-ir.left, width:r.width, center:r.left-ir.left+r.width/2};
+  }
+  function tabAt(clientX){
+    const ir=inner.getBoundingClientRect();
+    const x=clientX-ir.left;
+    let best=null, bestD=Infinity;
+    SEG_TABS.forEach(t=>{const r=rectOf(t); if(!r)return; const d=Math.abs((r.left+r.width/2)-x); if(d<bestD){bestD=d;best=t;}});
+    return best;
+  }
+  function onDown(e){
+    if(e.target.closest(".seg-btn")) return;
+    e.preventDefault();
+    dragging=true; pill.classList.add("dragging");
+    const pt=e.touches?e.touches[0]:e; startX=pt.clientX;
+    baseLeft=parseFloat(pill.style.left)||0;
+  }
+  function onMove(e){
+    if(!dragging) return;
+    e.preventDefault();
+    const pt=e.touches?e.touches[0]:e; const dx=pt.clientX-startX;
+    const r0=rectOf(SEG_TABS[0]), r2=rectOf(SEG_TABS[SEG_TABS.length-1]);
+    const minLeft=r0.left, maxLeft=r2.left+r2.width-(parseFloat(pill.style.width)||40);
+    let nl=baseLeft+dx; nl=Math.max(minLeft,Math.min(nl,maxLeft));
+    pill.style.left=nl+"px";
+    const t=tabAt(pt.clientX); if(t && t!==activeTab()) setTab(t);
+  }
+  function onUp(){ if(!dragging)return; dragging=false; pill.classList.remove("dragging"); setTab(activeTab()); }
+  pill.addEventListener("mousedown",onDown);
+  window.addEventListener("mousemove",onMove);
+  window.addEventListener("mouseup",onUp);
+  pill.addEventListener("touchstart",onDown,{passive:false});
+  window.addEventListener("touchmove",onMove,{passive:false});
+  window.addEventListener("touchend",onUp);
+})();
+
+/* ================= 事件绑定 ================= */
+$("#grid").addEventListener("click",e=>{const b=e.target.closest('[data-act="add"]');if(!b)return;addToCart(b.dataset.id);});
+$("#cartList").addEventListener("click",e=>{
+  const b=e.target.closest("[data-act]");if(!b)return;const id=b.dataset.id;
+  if(b.dataset.act==="toggle"){const it=ITEMS.find(i=>i.id===id);if(it){it.selected=!it.selected;renderCart();}}
+  if(b.dataset.act==="rm"){CART=CART.filter(x=>x!==id);saveCart();renderCart();}
+});
+$("#selAllBtn").addEventListener("click",()=>{const items=ITEMS.filter(i=>CART.includes(i.id));const allOn=items.every(i=>i.selected);items.forEach(i=>i.selected=!allOn);renderCart();});
+$("#clearCartBtn").addEventListener("click",()=>{if(!CART.length){toast("购物车已为空");return;}if(confirm("确定清空购物车？")){CART=[];ITEMS.forEach(i=>i.selected=false);saveCart();renderCart();}});
+$("#searchInput").addEventListener("input",renderGrid);
+
+function addToCart(id){
+  if(!CART.includes(id)){CART.push(id);saveCart();renderGrid();renderCart();}
+  const it=ITEMS.find(i=>i.id===id);
+  toast(`「${it?.title||"素材"}」已添加到购物车\n可商用，全免费，请在购物车查看`);
+}
+
+/* ================= 开发者页 ================= */
+function devLoginHTML(){return `
+  <div class="dev-box">
+    <div class="dev-card glass">
+      <h3>🔒 开发者访问</h3>
+      <p>此区域受密码保护。请输入开发者密码以管理素材库。</p>
+      <div class="field"><label for="devPwd">密码</label><input id="devPwd" type="password" placeholder="请输入密码" autocomplete="off"></div>
+      <div class="hint" id="devHint">提示：基层代码锁定密码为 12 位数字。</div>
+      <div class="dev-actions" style="margin-top:12px"><button class="btn primary" id="devLoginBtn">解锁</button></div>
+    </div>
+  </div>`;}
+function devPanelHTML(){return `
+  <div class="dev-box">
+    <div class="banner ok"><span>✅</span><span>已解锁开发者模式。发布/删除会写入仓库 <code>data/items.json</code>（一次 git commit），<b>全员刷新即可看到更新</b>。</span></div>
+    <div class="dev-card glass" id="addCard">
+      <h3>＋ 添加素材</h3>
+      <p>可一次选择多张图片和/或多个视频（按住 Ctrl/Cmd 或 Shift 多选），为每项填写标题与介绍后批量发布到素材库（全员可见）。</p>
+      <div class="field"><label>选择文件（可多选：图片 / 视频）</label><input id="addFile" type="file" accept="image/*,video/*" multiple></div>
+      <div class="added-list" id="addPreviewList" style="margin-top:4px"></div>
+      <div class="dev-actions"><button class="btn primary" id="addPublish">批量发布到素材库</button></div>
+      <div class="hint" id="addHint">图片/视频会以 base64 存入仓库数据文件，建议先压缩/裁剪再发布；视频体积较大时会显著增加数据文件大小。</div>
+      <div class="sync-status" id="syncStatus"><span class="sync-dot" id="syncDot"></span><span id="syncTxt">未同步</span></div>
+    </div>
+    <div class="dev-card glass">
+      <h3>已发布素材（${ITEMS.length} 项）</h3><p>可在此删除已发布的素材。</p>
+      <div class="added-list" id="addedList">${devItemsHTML()}</div>
+    </div>
+    <div class="dev-card glass">
+      <h3>仓库同步设置</h3>
+      <p>发布/删除需通过 GitHub API 写回仓库。请粘贴一个含 <code>repo</code> 权限的 Personal Access Token（仅存本机浏览器 localStorage，不上传）。</p>
+      <div class="field"><label>Personal Access Token</label><input id="tokenInput" type="password" placeholder="ghp_..." autocomplete="off" value="${getToken()?getToken().slice(0,6)+"•••":""}"></div>
+      <div class="dev-actions"><button class="btn primary" id="saveToken">保存 Token</button><button class="btn" id="clearToken" style="flex:0 0 auto">清除</button></div>
+      <div class="hint" id="tokenHint">仓库：${CFG.owner}/${CFG.repo} · 路径：${CFG.dataPath}</div>
+    </div>
+    <div class="dev-card glass"><button class="btn danger" id="devLogout" style="width:100%">退出开发者</button></div>
+  </div>`;}
+function devItemsHTML(){if(!ITEMS.length)return `<div class="hint">暂无素材，请先添加并发布。</div>`;return ITEMS.map(it=>`
+  <div class="added-item glass-soft">
+    ${it.type==="video"?`<video src="${it.src}" muted playsinline preload="metadata" style="width:48px;height:48px;border-radius:10px;object-fit:cover;flex:0 0 48px;background:#000"></video>`:`<img src="${it.src}" alt="">`}
+    <div class="at"><div class="t">${it.title||"未命名"}${it.type==="video"?' <span style="font-size:10px;color:var(--brand)">▶视频</span>':""}</div><div class="d">${it.desc||""}</div></div>
+    <button class="btn danger" data-del="${it.id}" style="flex:0 0 auto;padding:0 12px;height:30px">删除</button>
+  </div>`).join("");}
+
+function mountDev(){
+  const m=$("#devMount"); m.innerHTML="";
+  if(localStorage.getItem(DEV_KEY)==="1"){m.innerHTML=devPanelHTML();bindDevPanel();}
+  else{m.innerHTML=devLoginHTML();bindDevLogin();}
+}
+function bindDevLogin(){
+  const pwd=$("#devPwd"),hint=$("#devHint");
+  const tryLogin=()=>{const v=pwd.value.trim();if(!v){hint.textContent="请输入密码";hint.className="hint err";return;}
+    if(v===DEV_PWD){localStorage.setItem(DEV_KEY,"1");localStorage.removeItem(FAIL_KEY);mountDev();toast("开发者已解锁");}
+    else{let f=(+localStorage.getItem(FAIL_KEY)||0)+1;localStorage.setItem(FAIL_KEY,String(f));
+      if(f>=3){hint.innerHTML="密码错误次数过多。提示：<b>出生 + 原皮🆔</b>";}
+      else{hint.textContent="密码错误，还可尝试 "+(3-f)+" 次";}
+      hint.className="hint err";pwd.value="";pwd.focus();}};
+  $("#devLoginBtn").addEventListener("click",tryLogin);
+  pwd.addEventListener("keydown",e=>{if(e.key==="Enter")tryLogin();});
+}
+function setSyncStatus(state,msg){
+  const dot=$("#syncDot"),txt=$("#syncTxt"); if(!dot||!txt)return;
+  dot.className="sync-dot"+(state==="ok"?" ok":state==="err"?" err":"");
+  txt.textContent=msg;
+}
+function bindDevPanel(){
+  const file=$("#addFile"),list=$("#addPreviewList"),hint=$("#addHint");
+  // 待发布队列：{id,type,src,file,name}
+  let pending=[];
+  if(getToken()){setSyncStatus("ok","Token 已配置，可发布/删除");}
+  else{setSyncStatus("","请先配置 Token");}
+
+  // 将 File 转为 dataURL（base64），图片/视频统一处理以便持久化进 items.json
+  function fileToDataURL(f){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(f);});}
+  function shortName(n){return n.length>24?n.slice(0,21)+"…":n;}
+
+  function renderPending(){
+    list.innerHTML=pending.length?pending.map((p,i)=>`
+      <div class="added-item glass-soft" data-idx="${i}">
+        ${p.type==="video"
+          ?`<video src="${p.previewURL||p.src}" muted style="width:48px;height:48px;border-radius:10px;object-fit:cover;flex:0 0 48px;background:#000"></video>`
+          :`<img src="${p.previewURL||p.src}" alt="" style="width:48px;height:48px;border-radius:10px;object-fit:cover;flex:0 0 48px">`}
+        <div class="at" style="flex:1;min-width:0">
+          <input data-role="title" type="text" placeholder="标题（${p.type==="video"?"视频":"图片"}：${shortName(p.name)}）" maxlength="40"
+            value="${p.title||""}" style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:12px;outline:0;background:#fafafc">
+          <input data-role="desc" type="text" placeholder="一句话介绍（可商用·免费）" maxlength="120"
+            value="${p.desc||""}" style="width:100%;margin-top:5px;padding:5px 8px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:11px;outline:0;background:#fafafc;color:var(--sub)">
+        </div>
+        <button class="btn danger" data-role="rm" style="flex:0 0 auto;padding:0 10px;height:30px">移除</button>
+      </div>`).join("")
+      :`<div class="hint">尚未选择文件。点击上方输入框一次选择多张图片/多个视频（图片与视频可混合选择）。</div>`;
+    // 绑定移除
+    list.querySelectorAll('[data-role="rm"]').forEach(b=>b.addEventListener("click",()=>{const i=+b.closest("[data-idx]").dataset.idx;pending.splice(i,1);renderPending();hint.className="hint";}));
+  }
+
+  file.addEventListener("change",async()=>{
+    const files=Array.from(file.files||[]); if(!files.length)return;
+    hint.textContent="正在读取 "+(files.length>1?files.length+" 个文件":"文件")+"…";hint.className="hint";
+    let added=0;
+    for(const f of files){
+      const isVideo=f.type.startsWith("video/"), isImage=f.type.startsWith("image/");
+      if(!isVideo&&!isImage){hint.textContent="已跳过非图片/视频文件："+f.name;hint.className="hint err";continue;}
+      const src=await fileToDataURL(f);
+      pending.push({id:uid(),type:isVideo?"video":"image",src,previewURL:isVideo?URL.createObjectURL(f):src,name:f.name,title:"",desc:""});
+      added++;
+    }
+    renderPending();
+    hint.textContent=added?"已添加 "+added+" 项，请为每项填写标题后发布（可继续追加选择）。":"未添加任何有效文件";hint.className=added?"hint":"hint err";
+    file.value=""; // 允许重复选择同一文件
+  });
+
+  $("#addPublish").addEventListener("click",async()=>{
+    // 收集标题/介绍（可能用户编辑过）
+    const rows=list.querySelectorAll(".added-item[data-idx]");
+    const items=[]; let noTitle=false;
+    rows.forEach(row=>{const i=+row.dataset.idx;const t=row.querySelector('[data-role="title"]').value.trim();
+      const d=row.querySelector('[data-role="desc"]').value.trim();if(!t)noTitle=true;
+      items.push({id:pending[i].id,type:pending[i].type,src:pending[i].src,title:t,desc:d,ts:Date.now()});});
+    if(!items.length){hint.textContent="请先选择至少一个图片/视频文件";hint.className="hint err";return;}
+    if(noTitle){hint.textContent="请为每一项填写标题（图片/视频名不可为空）";hint.className="hint err";return;}
+    if(!getToken()){hint.textContent="请先在「仓库同步设置」中保存 Token";hint.className="hint err";return;}
+    const next=[...items,...ITEMS];
+    hint.textContent="正在发布到素材库（写入仓库 data/items.json）…";hint.className="hint";
+    setSyncStatus("","同步中…");
+    try{
+      await commitItems(next);
+      ITEMS=next; pending=[]; renderPending(); renderGrid(); renderCart(); mountDev();
+      toast("✅ 已批量发布 "+items.length+" 项（全员刷新即可见）");
+      setSyncStatus("ok","最近一次发布成功");
+    }
+    catch(err){
+      const msg=err.message==="NO_TOKEN"?"未配置 Token":err.message==="NO_FILE"?"仓库数据文件不存在":"网络或仓库错误，请检查 Token 权限";
+      hint.textContent="发布失败："+msg;hint.className="hint err";
+      setSyncStatus("err","最近一次发布失败");
+    }
+  });
+  $("#addedList").innerHTML=devItemsHTML();
+  $("#addedList").addEventListener("click",async e=>{const b=e.target.closest("[data-del]");if(!b)return;
+    if(!confirm("确定删除该素材？"))return;
+    const next=ITEMS.filter(i=>i.id!==b.dataset.del);
+    setSyncStatus("","同步中…");
+    try{await commitItems(next);ITEMS=next;renderGrid();renderCart();mountDev();toast("✅ 已删除（全员刷新即见）");setSyncStatus("ok","最近一次删除成功");}
+    catch(err){toast("删除失败："+(err.message==="NO_TOKEN"?"未配置 Token":"仓库错误"));setSyncStatus("err","最近一次删除失败");}});
+  $("#saveToken").addEventListener("click",()=>{const v=$("#tokenInput").value.trim();if(!v){toast("请输入 Token");return;}setToken(v);toast("Token 已保存（仅本机）");$("#tokenInput").value=v.slice(0,6)+"•••";setSyncStatus("ok","Token 已配置");});
+  $("#clearToken").addEventListener("click",()=>{setToken("");$("#tokenInput").value="";toast("已清除 Token");setSyncStatus("","请先配置 Token");});
+  $("#devLogout").addEventListener("click",()=>{localStorage.removeItem(DEV_KEY);mountDev();setTab("today");toast("已退出开发者");});
+}
+
+updateCartBadge();
+loadItems();
+mountDev();
+window.addEventListener("resize",()=>{const a=document.querySelector(".seg-btn.active");if(a)setTab(a.dataset.tab);});
+</script>
+</body>
+</html>
